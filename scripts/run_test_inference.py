@@ -42,11 +42,17 @@ from src.model import load_model_bundle, predict_probabilities
 OUTPUT_DIR = PROJECT_ROOT / "output"
 DATA_DIR   = PROJECT_ROOT / "data" / "test"
 MODELS_DIR = OUTPUT_DIR / "models_v2"
-ARTIFACT   = OUTPUT_DIR / "blocking_artifacts_test.pkl"   # TEST artifact
-CKPT_PATH  = OUTPUT_DIR / "test_inference_checkpoint.pkl"
+def get_default_artifact():
+    colab_art = Path("/content/blocking_artifacts_test.pkl")
+    if colab_art.exists() and colab_art.stat().st_size > 10 * 1024 * 1024:
+        return colab_art
+    return OUTPUT_DIR / "blocking_artifacts_test.pkl"
 
-# Approximate test S2+S3 totals for progress display
-TOTAL_TEST_TARGETS = 4_887_273 + 5_082_316
+
+def get_default_ckpt():
+    if Path("/content").exists():
+        return Path("/content/test_inference_checkpoint.pkl")
+    return OUTPUT_DIR / "test_inference_checkpoint.pkl"
 
 
 def parse_args():
@@ -56,6 +62,8 @@ def parse_args():
     p.add_argument("--threshold", type=float, default=None)
     p.add_argument("--auto", action="store_true",
                    help="Read model+threshold from fast_threshold_results.json")
+    p.add_argument("--artifact", type=Path, default=None,
+                   help="Path to test blocking artifact")
     p.add_argument("--chunk-size", type=int, default=50_000)
     p.add_argument("--resume", action="store_true",
                    help="Resume from checkpoint if it exists")
@@ -88,27 +96,30 @@ def main():
         else:
             threshold = args.threshold
 
+    artifact_path = args.artifact or get_default_artifact()
+    ckpt_path     = get_default_ckpt()
+
     print("=" * 70)
     print("PHASE 7: OPTIMISED TEST INFERENCE")
     print("=" * 70)
     print(f"  Model:          {model_name}")
     print(f"  Threshold:      {threshold:.2f}")
-    print(f"  Artifact:       {ARTIFACT}")
+    print(f"  Artifact:       {artifact_path}")
     print(f"  Data dir:       {DATA_DIR}")
 
-    if not ARTIFACT.exists():
+    if not artifact_path.exists():
         raise FileNotFoundError(
-            f"Test blocking artifact not found: {ARTIFACT}\n"
+            f"Test blocking artifact not found: {artifact_path}\n"
             "Run:  python scripts/build_test_blocking.py"
         )
 
     # ── Load test blocking artifact (built from TEST S1 entities) ───────────
     print("\nLoading test blocking artifact …")
     try:
-        artifact     = load_blocking_artifact(ARTIFACT)
+        artifact     = load_blocking_artifact(artifact_path)
     except (EOFError, pickle.UnpicklingError) as e:
         raise RuntimeError(
-            f"Failed to load {ARTIFACT}: {e}\n"
+            f"Failed to load {artifact_path}: {e}\n"
             "The artifact file was interrupted during saving (e.g. via ^C).\n"
             "Please re-run: python scripts/build_test_blocking.py"
         ) from e
@@ -147,9 +158,9 @@ def main():
     predictions = {}   # s1_id -> set[target_id]
     candidates  = {}   # s1_id -> set[target_id]
 
-    if args.resume and CKPT_PATH.exists():
+    if args.resume and ckpt_path.exists():
         print(f"\nResuming from checkpoint …")
-        with open(CKPT_PATH, "rb") as f:
+        with open(ckpt_path, "rb") as f:
             ckpt = pickle.load(f)
         completed_targets = ckpt["completed_targets"]
         predictions       = ckpt["predictions"]
@@ -241,7 +252,7 @@ def main():
 
             # Checkpoint
             if ckpt_counter >= CKPT_EVERY:
-                with open(CKPT_PATH, "wb") as f:
+                with open(ckpt_path, "wb") as f:
                     pickle.dump({
                         "completed_targets": completed_targets,
                         "predictions":       predictions,
@@ -282,8 +293,8 @@ def main():
     print(f"  ✅ {out_cand}  ({len(all_test_s1):,} rows)")
 
     # Cleanup checkpoint
-    if CKPT_PATH.exists():
-        CKPT_PATH.unlink()
+    if ckpt_path.exists():
+        ckpt_path.unlink()
 
     print("\n" + "=" * 70)
     print("TEST INFERENCE COMPLETE")

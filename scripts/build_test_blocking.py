@@ -93,13 +93,31 @@ def main():
         artifact[f"target_address_pair_frequency_{src_num}"] = t_addr_f
 
     # ── Save ─────────────────────────────────────────────────────────────────
-    out_path = OUTPUT_DIR / "blocking_artifacts_test.pkl"
+    # If on Colab, save directly to local NVMe (/content/) to avoid Google Drive FUSE hangs
+    if Path("/content").exists() and not Path("/content/ml_challenge").samefile(OUTPUT_DIR.parent):
+        out_path = Path("/content/blocking_artifacts_test.pkl")
+    elif Path("/content").exists():
+        out_path = Path("/content/blocking_artifacts_test.pkl")
+    else:
+        out_path = OUTPUT_DIR / "blocking_artifacts_test.pkl"
+
     print(f"\n[IMPORTANT] Saving test blocking artifact to {out_path} …")
-    print("  Writing ~120 MB to disk. This takes ~30-60 seconds, please DO NOT interrupt (^C)...")
+    print("  Writing to local disk (fast NVMe SSD)...")
     save_blocking_artifact(artifact, out_path)
     mb = out_path.stat().st_size / (1024 * 1024)
     print(f"✅ Successfully saved: {mb:.1f} MB in {time.time()-start:.0f}s")
     print(f"   S1 entities: {len(artifact['s1_ids']):,}")
+
+    # Also make a copy or symlink in OUTPUT_DIR if out_path was in /content
+    if out_path != OUTPUT_DIR / "blocking_artifacts_test.pkl":
+        try:
+            target_link = OUTPUT_DIR / "blocking_artifacts_test.pkl"
+            if target_link.is_symlink() or target_link.exists():
+                target_link.unlink()
+            target_link.symlink_to(out_path)
+            print(f"✅ Symlinked {out_path} -> {target_link}")
+        except Exception as e:
+            print(f"Note: symlink to output/ skipped: {e}")
 
 
 if __name__ == "__main__":
