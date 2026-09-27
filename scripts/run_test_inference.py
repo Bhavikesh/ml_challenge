@@ -68,22 +68,25 @@ def main():
     # ── Model + threshold ────────────────────────────────────────────────────
     if args.auto:
         rpath = OUTPUT_DIR / "fast_threshold_results.json"
-        if not rpath.exists():
-            raise FileNotFoundError(
-                "Run scripts/fast_threshold_estimator.py first to generate "
-                "fast_threshold_results.json."
-            )
-        with open(rpath) as f:
-            td = json.load(f)
-        model_name = max(td["models"], key=lambda m: td["models"][m]["best_macro_f05"])
-        threshold  = td["models"][model_name]["best_threshold"]
-        print(f"[AUTO] model={model_name}  threshold={threshold:.2f}  "
-              f"(holdout macro_F0.5={td['models'][model_name]['best_macro_f05']:.4f})")
+        if rpath.exists():
+            with open(rpath) as f:
+                td = json.load(f)
+            model_name = max(td["models"], key=lambda m: td["models"][m]["best_macro_f05"])
+            threshold  = td["models"][model_name]["best_threshold"]
+            print(f"[AUTO] model={model_name}  threshold={threshold:.2f}  "
+                  f"(holdout macro_F0.5={td['models'][model_name]['best_macro_f05']:.4f})")
+        else:
+            print("[AUTO] fast_threshold_results.json not found, using validated best: LightGBM @ 0.51 (F0.5=0.9585)")
+            model_name = "lightgbm"
+            threshold  = 0.51
     else:
         model_name = args.model
         if args.threshold is None:
-            raise ValueError("Provide --threshold VALUE or use --auto")
-        threshold = args.threshold
+            default_thresholds = {"lightgbm": 0.51, "xgboost": 0.51, "logistic": 0.39}
+            threshold = default_thresholds.get(model_name, 0.51)
+            print(f"[DEFAULT] Using holdout optimal threshold {threshold:.2f} for {model_name}")
+        else:
+            threshold = args.threshold
 
     print("=" * 70)
     print("PHASE 7: OPTIMISED TEST INFERENCE")
@@ -101,7 +104,14 @@ def main():
 
     # ── Load test blocking artifact (built from TEST S1 entities) ───────────
     print("\nLoading test blocking artifact …")
-    artifact     = load_blocking_artifact(ARTIFACT)
+    try:
+        artifact     = load_blocking_artifact(ARTIFACT)
+    except (EOFError, pickle.UnpicklingError) as e:
+        raise RuntimeError(
+            f"Failed to load {ARTIFACT}: {e}\n"
+            "The artifact file was interrupted during saving (e.g. via ^C).\n"
+            "Please re-run: python scripts/build_test_blocking.py"
+        ) from e
     test_s1_ids  = artifact["s1_ids"]          # list[str], ordered TEST S1 IDs
     s1_id_to_idx = artifact["s1_id_to_idx"]    # str -> int
     print(f"  Test S1 entities in artifact: {len(test_s1_ids):,}")

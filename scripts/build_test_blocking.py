@@ -94,10 +94,11 @@ def main():
 
     # ── Save ─────────────────────────────────────────────────────────────────
     out_path = OUTPUT_DIR / "blocking_artifacts_test.pkl"
-    print(f"\nSaving test blocking artifact to {out_path} …")
+    print(f"\n[IMPORTANT] Saving test blocking artifact to {out_path} …")
+    print("  Writing ~120 MB to disk. This takes ~30-60 seconds, please DO NOT interrupt (^C)...")
     save_blocking_artifact(artifact, out_path)
     mb = out_path.stat().st_size / (1024 * 1024)
-    print(f"✅ Saved: {mb:.1f} MB  in {time.time()-start:.0f}s")
+    print(f"✅ Successfully saved: {mb:.1f} MB in {time.time()-start:.0f}s")
     print(f"   S1 entities: {len(artifact['s1_ids']):,}")
 
 
