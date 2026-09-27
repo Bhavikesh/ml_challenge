@@ -56,7 +56,7 @@ else:
     CKPT_PATH     = OUTPUT_DIR / "test_inference_checkpoint.pkl"
 
 TOTAL_TEST_TARGETS = 4_887_273 + 5_082_316
-CHUNK_SIZE = 50_000
+CHUNK_SIZE = 5_000
 
 
 def get_threshold_and_model():
@@ -220,6 +220,8 @@ def main():
             for entity_id, name, addr, country in rows_batch:
                 cands = generate_candidates(name, addr, src_num, artifact)
                 if cands:
+                    if len(cands) > 30:
+                        cands = cands[:30]
                     X = compute_candidate_features_batch(cands, name, addr, country, src_num, s1_store)
                     feature_blocks.append(X)
                     target_meta.append((entity_id, cands, len(cands)))
@@ -253,7 +255,7 @@ def main():
             pct     = total_scanned / TOTAL_TEST_TARGETS * 100
             eta_s   = (TOTAL_TEST_TARGETS - total_scanned) / max(rate, 1)
 
-            if total_scanned % 250_000 < len(df_chunk):
+            if total_scanned % 50_000 < len(df_chunk):
                 print(
                     f"  [{pct:5.1f}%] {total_scanned:>10,} / {TOTAL_TEST_TARGETS:,} "
                     f"| {rate:5.0f} rows/s | ETA: {eta_s/3600:4.1f}h | cands: {total_candidates:,}",
