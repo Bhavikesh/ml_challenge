@@ -131,20 +131,7 @@ def ensure_blocking_artifact():
         del t_name, t_addr
         gc.collect()
 
-    print(f"Saving artifact to fast local path: {ARTIFACT_PATH}...")
-    save_blocking_artifact(artifact, ARTIFACT_PATH)
-    print(f"✅ Saved {ARTIFACT_PATH.stat().st_size/(1024*1024):.1f} MB in {time.time()-t0:.0f}s")
-
-    # Mirror link
-    mirror = OUTPUT_DIR / "blocking_artifacts_test.pkl"
-    if ARTIFACT_PATH != mirror:
-        try:
-            if mirror.is_symlink() or mirror.exists():
-                mirror.unlink()
-            mirror.symlink_to(ARTIFACT_PATH)
-        except Exception:
-            pass
-
+    print(f"✅ In-memory blocking index ready in {time.time()-t0:.0f}s. Proceeding directly to inference...")
     return artifact
 
 
@@ -265,16 +252,26 @@ def main():
             rate    = (total_scanned - len(completed_targets) + len(rows_batch)) / elapsed
             pct     = total_scanned / TOTAL_TEST_TARGETS * 100
             eta_s   = (TOTAL_TEST_TARGETS - total_scanned) / max(rate, 1)
-            print(
-                f"  [{pct:5.1f}%] {total_scanned:>10,} / {TOTAL_TEST_TARGETS:,} "
-                f"| {rate:5.0f} rows/s | ETA: {eta_s/3600:4.1f}h | cands: {total_candidates:,}",
-                end="\r",
-            )
+
+            if total_scanned % 250_000 < len(df_chunk):
+                print(
+                    f"  [{pct:5.1f}%] {total_scanned:>10,} / {TOTAL_TEST_TARGETS:,} "
+                    f"| {rate:5.0f} rows/s | ETA: {eta_s/3600:4.1f}h | cands: {total_candidates:,}",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"  [{pct:5.1f}%] {total_scanned:>10,} / {TOTAL_TEST_TARGETS:,} "
+                    f"| {rate:5.0f} rows/s | ETA: {eta_s/3600:4.1f}h | cands: {total_candidates:,}",
+                    end="\r",
+                    flush=True,
+                )
 
             if ckpt_counter >= CKPT_EVERY:
                 with open(CKPT_PATH, "wb") as f:
                     pickle.dump({"completed_targets": completed_targets, "predictions": predictions, "candidates": candidates}, f, protocol=4)
                 ckpt_counter = 0
+                print(f"  [Checkpoint saved at {total_scanned:,} rows]", flush=True)
 
     print(f"\n\nInference completed in {(time.time()-t_start)/3600:.2f} hours.")
 
